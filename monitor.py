@@ -106,7 +106,7 @@ def get_product_price():
         f"€{current_price:.2f}"
     )
 
-    raise RuntimeError("TEST - Price monitor failure notification")
+    return current_price
 def load_previous_price():
     if not PRICE_FILE.exists():
         return None
