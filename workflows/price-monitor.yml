@@ -1,0 +1,49 @@
+name: Supplement Price Monitor
+
+on:
+  schedule:
+    # Runs every day at 09:00 UTC
+    - cron: "0 9 * * *"
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check-price:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Check product price
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python monitor.py
+
+      - name: Save price history
+        run: |
+          git config user.name "Price Monitor Bot"
+          git config user.email "actions@github.com"
+
+          git add price_history.json
+
+          if git diff --cached --quiet; then
+            echo "No price change to commit."
+          else
+            git commit -m "Update price history"
+            git push
+          fi
