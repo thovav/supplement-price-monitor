@@ -2,7 +2,6 @@ name: Supplement Price Monitor
 
 on:
   schedule:
-    # Runs every day at 09:00 UTC
     - cron: "0 9 * * *"
 
   workflow_dispatch:
@@ -34,7 +33,7 @@ jobs:
         run: |
           python monitor.py
 
-            - name: Save price history
+      - name: Save price history
         run: |
           git config user.name "Price Monitor Bot"
           git config user.email "actions@github.com"
