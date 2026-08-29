@@ -40,10 +40,61 @@ def get_product_price():
 
     soup = BeautifulSoup(response.text, "html.parser")
 
-    # First try structured product data.
-    for script in soup.find_all("script", type="application/ld+json"):
+    # ---------------------------------------------------------
+    # Method 1: Look for the standard itemprop="price" element
+    # ---------------------------------------------------------
+    price_elements = soup.find_all(attrs={"itemprop": "price"})
+
+    for element in price_elements:
+        value = (
+            element.get("content")
+            or element.get_text(strip=True)
+        )
+
+        if value:
+            value = value.replace(",", ".")
+            match = re.search(r"\d+(?:\.\d+)?", value)
+
+            if match:
+                price = float(match.group())
+
+                if price > 0:
+                    print(f"Found price using itemprop: €{price:.2f}")
+                    return price
+
+    # ---------------------------------------------------------
+    # Method 2: Look for meta itemprop="price"
+    # ---------------------------------------------------------
+    meta_price = soup.find(
+        "meta",
+        attrs={"itemprop": "price"}
+    )
+
+    if meta_price:
+        value = meta_price.get("content")
+
+        if value:
+            value = value.replace(",", ".")
+            match = re.search(r"\d+(?:\.\d+)?", value)
+
+            if match:
+                price = float(match.group())
+
+                if price > 0:
+                    print(f"Found price using meta tag: €{price:.2f}")
+                    return price
+
+    # ---------------------------------------------------------
+    # Method 3: Search JSON-LD structured data
+    # ---------------------------------------------------------
+    for script in soup.find_all(
+        "script",
+        type="application/ld+json"
+    ):
         try:
-            data = json.loads(script.string or script.get_text())
+            data = json.loads(
+                script.string or script.get_text()
+            )
 
             items = data if isinstance(data, list) else [data]
 
@@ -57,30 +108,78 @@ def get_product_price():
                     price = offers.get("price")
 
                     if price:
-                        return float(price)
+                        price = float(price)
+
+                        # Ignore invalid zero prices
+                        if price > 0:
+                            print(
+                                f"Found price using JSON-LD: "
+                                f"€{price:.2f}"
+                            )
+                            return price
 
                 elif isinstance(offers, list):
                     for offer in offers:
-                        if isinstance(offer, dict) and offer.get("price"):
-                            return float(offer["price"])
+                        if (
+                            isinstance(offer, dict)
+                            and offer.get("price")
+                        ):
+                            price = float(offer["price"])
 
-        except (json.JSONDecodeError, TypeError, ValueError):
+                            if price > 0:
+                                print(
+                                    f"Found price using JSON-LD: "
+                                    f"€{price:.2f}"
+                                )
+                                return price
+
+        except (
+            json.JSONDecodeError,
+            TypeError,
+            ValueError
+        ):
             continue
 
-    # Fallback: search visible page text for euro prices.
+    # ---------------------------------------------------------
+    # Method 4: Search visible page text
+    # ---------------------------------------------------------
     text = soup.get_text(" ", strip=True)
 
+    # Specifically look for euro prices
     prices = re.findall(
         r"€\s?(\d+[.,]\d{2})",
         text
     )
 
-    if prices:
-        return float(prices[0].replace(",", "."))
+    valid_prices = []
 
-    raise RuntimeError("Could not find product price on the page.")
+    for value in prices:
+        try:
+            price = float(value.replace(",", "."))
 
+            if price > 0:
+                valid_prices.append(price)
 
+        except ValueError:
+            continue
+
+    if valid_prices:
+        # The product page currently displays €21.99 as the
+        # current price and €25.99 as the old price.
+        # Prefer the first valid price found.
+        price = valid_prices[0]
+
+        print(
+            f"Found price using visible text: "
+            f"€{price:.2f}"
+        )
+
+        return price
+
+    raise RuntimeError(
+        "Could not find a valid product price on the page."
+    )
+    
 def load_previous_price():
     if not PRICE_FILE.exists():
         return None
