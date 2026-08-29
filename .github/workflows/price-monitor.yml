@@ -45,7 +45,6 @@ jobs:
             echo "No price change to commit."
           else
             git commit -m "Update price history"
-
             git pull --rebase origin main
             git push origin main
           fi
