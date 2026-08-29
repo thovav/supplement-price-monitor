@@ -33,7 +33,7 @@ jobs:
         run: |
           python monitor.py
 
-            - name: Save price history
+      - name: Save price history
         run: |
           git config user.name "Price Monitor Bot"
           git config user.email "actions@github.com"
