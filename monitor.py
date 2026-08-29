@@ -22,7 +22,6 @@ TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
 
 def get_product_price():
-        raise RuntimeError("TEST: Price monitor failure notification")
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -54,10 +53,8 @@ def get_product_price():
             "Could not find the product title on the page."
         )
 
-    # Get the parent section containing the product information.
     product_section = title.parent
 
-    # Walk upward until we have a sufficiently large section.
     for _ in range(8):
         if product_section.parent:
             product_section = product_section.parent
@@ -70,13 +67,11 @@ def get_product_price():
         if "21.99" in section_text or "25.99" in section_text:
             break
 
-    # Search ONLY inside the product section.
     text = product_section.get_text(
         " ",
         strip=True
     )
 
-    # Find euro prices.
     matches = re.findall(
         r"€\s*(-?\d+(?:[.,]\d{2})?)",
         text
@@ -88,7 +83,6 @@ def get_product_price():
         try:
             price = float(value.replace(",", "."))
 
-            # Ignore zero and negative values.
             if price > 0:
                 prices.append(price)
 
@@ -100,14 +94,6 @@ def get_product_price():
             "Could not find a valid product price."
         )
 
-    # The product page displays:
-    #
-    # €21.99
-    # -€4.00
-    # €25.99
-    #
-    # The first positive euro price is therefore
-    # the current selling price.
     current_price = prices[0]
 
     print(
