@@ -40,146 +40,86 @@ def get_product_price():
 
     soup = BeautifulSoup(response.text, "html.parser")
 
-    # ---------------------------------------------------------
-    # Method 1: Look for the standard itemprop="price" element
-    # ---------------------------------------------------------
-    price_elements = soup.find_all(attrs={"itemprop": "price"})
-
-    for element in price_elements:
-        value = (
-            element.get("content")
-            or element.get_text(strip=True)
+    # Find the product title first.
+    title = soup.find(
+        string=re.compile(
+            r"Core Champs L-CARNITINE 1000 Mg 90 Tabs",
+            re.IGNORECASE
         )
-
-        if value:
-            value = value.replace(",", ".")
-            match = re.search(r"\d+(?:\.\d+)?", value)
-
-            if match:
-                price = float(match.group())
-
-                if price > 0:
-                    print(f"Found price using itemprop: €{price:.2f}")
-                    return price
-
-    # ---------------------------------------------------------
-    # Method 2: Look for meta itemprop="price"
-    # ---------------------------------------------------------
-    meta_price = soup.find(
-        "meta",
-        attrs={"itemprop": "price"}
     )
 
-    if meta_price:
-        value = meta_price.get("content")
+    if not title:
+        raise RuntimeError(
+            "Could not find the product title on the page."
+        )
 
-        if value:
-            value = value.replace(",", ".")
-            match = re.search(r"\d+(?:\.\d+)?", value)
+    # Get the parent section containing the product information.
+    product_section = title.parent
 
-            if match:
-                price = float(match.group())
+    # Walk upward until we have a sufficiently large section.
+    for _ in range(8):
+        if product_section.parent:
+            product_section = product_section.parent
 
-                if price > 0:
-                    print(f"Found price using meta tag: €{price:.2f}")
-                    return price
+        section_text = product_section.get_text(
+            " ",
+            strip=True
+        )
 
-    # ---------------------------------------------------------
-    # Method 3: Search JSON-LD structured data
-    # ---------------------------------------------------------
-    for script in soup.find_all(
-        "script",
-        type="application/ld+json"
-    ):
-        try:
-            data = json.loads(
-                script.string or script.get_text()
-            )
+        if "21.99" in section_text or "25.99" in section_text:
+            break
 
-            items = data if isinstance(data, list) else [data]
+    # Search ONLY inside the product section.
+    text = product_section.get_text(
+        " ",
+        strip=True
+    )
 
-            for item in items:
-                if not isinstance(item, dict):
-                    continue
-
-                offers = item.get("offers")
-
-                if isinstance(offers, dict):
-                    price = offers.get("price")
-
-                    if price:
-                        price = float(price)
-
-                        # Ignore invalid zero prices
-                        if price > 0:
-                            print(
-                                f"Found price using JSON-LD: "
-                                f"€{price:.2f}"
-                            )
-                            return price
-
-                elif isinstance(offers, list):
-                    for offer in offers:
-                        if (
-                            isinstance(offer, dict)
-                            and offer.get("price")
-                        ):
-                            price = float(offer["price"])
-
-                            if price > 0:
-                                print(
-                                    f"Found price using JSON-LD: "
-                                    f"€{price:.2f}"
-                                )
-                                return price
-
-        except (
-            json.JSONDecodeError,
-            TypeError,
-            ValueError
-        ):
-            continue
-
-    # ---------------------------------------------------------
-    # Method 4: Search visible page text
-    # ---------------------------------------------------------
-    text = soup.get_text(" ", strip=True)
-
-    # Specifically look for euro prices
-    prices = re.findall(
-        r"€\s?(\d+[.,]\d{2})",
+    # Find euro prices.
+    matches = re.findall(
+        r"€\s*(-?\d+(?:[.,]\d{2})?)",
         text
     )
 
-    valid_prices = []
+    prices = []
 
-    for value in prices:
+    for value in matches:
         try:
             price = float(value.replace(",", "."))
 
+            # Ignore zero and negative values.
             if price > 0:
-                valid_prices.append(price)
+                prices.append(price)
 
         except ValueError:
             continue
 
-    if valid_prices:
-        # The product page currently displays €21.99 as the
-        # current price and €25.99 as the old price.
-        # Prefer the first valid price found.
-        price = valid_prices[0]
-
-        print(
-            f"Found price using visible text: "
-            f"€{price:.2f}"
+    if not prices:
+        raise RuntimeError(
+            "Could not find a valid product price."
         )
 
-        return price
+    # The product page displays:
+    #
+    # €21.99
+    # -€4.00
+    # €25.99
+    #
+    # The first positive euro price is therefore
+    # the current selling price.
+    current_price = prices[0]
 
-    raise RuntimeError(
-        "Could not find a valid product price on the page."
+    print(
+        f"Detected product prices: "
+        f"{[f'€{p:.2f}' for p in prices]}"
     )
-    
+
+    print(
+        f"Current product price: "
+        f"€{current_price:.2f}"
+    )
+
+    return current_price
 def load_previous_price():
     if not PRICE_FILE.exists():
         return None
