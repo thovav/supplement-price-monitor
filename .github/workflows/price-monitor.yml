@@ -33,12 +33,10 @@ jobs:
         run: |
           python monitor.py
 
-      - name: Save price history
+            - name: Save price history
         run: |
           git config user.name "Price Monitor Bot"
           git config user.email "actions@github.com"
-
-          git pull --rebase origin main
 
           git add price_history.json
 
@@ -46,5 +44,7 @@ jobs:
             echo "No price change to commit."
           else
             git commit -m "Update price history"
-            git push origin main
           fi
+
+          git pull --rebase origin main
+          git push origin main
