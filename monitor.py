@@ -1,7 +1,7 @@
 import json
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
@@ -40,7 +40,6 @@ def get_product_price():
 
     soup = BeautifulSoup(response.text, "html.parser")
 
-    # Find the product title first.
     title = soup.find(
         string=re.compile(
             r"Core Champs L-CARNITINE 1000 Mg 90 Tabs",
@@ -107,25 +106,73 @@ def get_product_price():
     )
 
     return current_price
+
+
 def load_previous_price():
     if not PRICE_FILE.exists():
         return None
 
     try:
-        data = json.loads(PRICE_FILE.read_text())
-        return data.get("price")
-    except (json.JSONDecodeError, OSError):
+        with open(PRICE_FILE, "r") as f:
+            history = json.load(f)
+
+        # New history format: list of daily records
+        if isinstance(history, list):
+            if not history:
+                return None
+
+            return history[-1]["price"]
+
+        # Support the old single-record format
+        if isinstance(history, dict):
+            return history.get("price")
+
+    except (json.JSONDecodeError, KeyError, TypeError):
         return None
 
+    return None
 
-def save_price(price):
-    data = {
-        "price": price,
-        "checked_at": datetime.utcnow().isoformat() + "Z"
-    }
 
-    PRICE_FILE.write_text(
-        json.dumps(data, indent=2)
+def save_price_history(price, checked_at):
+    history = []
+
+    if PRICE_FILE.exists():
+        try:
+            with open(PRICE_FILE, "r") as f:
+                existing = json.load(f)
+
+            # Already using the new list format
+            if isinstance(existing, list):
+                history = existing
+
+            # Convert old single-record format
+            elif isinstance(existing, dict):
+                if "price" in existing and "checked_at" in existing:
+                    history.append(existing)
+
+        except (json.JSONDecodeError, TypeError):
+            history = []
+
+    today = checked_at[:10]
+
+    # If today's date already exists, update today's record
+    if history and history[-1].get("checked_at", "")[:10] == today:
+        history[-1] = {
+            "price": round(price, 2),
+            "checked_at": checked_at
+        }
+    else:
+        history.append({
+            "price": round(price, 2),
+            "checked_at": checked_at
+        })
+
+    with open(PRICE_FILE, "w") as f:
+        json.dump(history, f, indent=2)
+
+    print(
+        f"Price history now contains "
+        f"{len(history)} daily records."
     )
 
 
@@ -152,40 +199,46 @@ def main():
     current_price = get_product_price()
     previous_price = load_previous_price()
 
+    checked_at = datetime.now(timezone.utc).isoformat()
+
     print(f"Current price: €{current_price:.2f}")
 
     if previous_price is None:
-        print("No previous price found. Saving current price.")
-        save_price(current_price)
-        return
-
-    print(f"Previous price: €{previous_price:.2f}")
-
-    if current_price < previous_price:
-        reduction = previous_price - current_price
-        percentage = (reduction / previous_price) * 100
-
-        message = (
-            f"🔔 PRICE DROP!\n\n"
-            f"{PRODUCT_NAME}\n\n"
-            f"Previous price: €{previous_price:.2f}\n"
-            f"New price: €{current_price:.2f}\n"
-            f"Reduction: €{reduction:.2f} "
-            f"({percentage:.1f}%)\n\n"
-            f"👉 {PRODUCT_URL}"
-        )
-
-        send_telegram(message)
-
-        print("Price dropped. Telegram notification sent.")
-
-    elif current_price > previous_price:
-        print("Price increased. No notification.")
-
+        print("No previous price found.")
     else:
-        print("Price unchanged.")
+        print(f"Previous price: €{previous_price:.2f}")
 
-    save_price(current_price)
+        if current_price < previous_price:
+            reduction = previous_price - current_price
+            percentage = (reduction / previous_price) * 100
+
+            message = (
+                f"🔔 PRICE DROP!\n\n"
+                f"{PRODUCT_NAME}\n\n"
+                f"Previous price: €{previous_price:.2f}\n"
+                f"New price: €{current_price:.2f}\n"
+                f"Reduction: €{reduction:.2f} "
+                f"({percentage:.1f}%)\n\n"
+                f"👉 {PRODUCT_URL}"
+            )
+
+            send_telegram(message)
+
+            print(
+                "Price dropped. "
+                "Telegram notification sent."
+            )
+
+        elif current_price > previous_price:
+            print("Price increased. No notification.")
+
+        else:
+            print("Price unchanged.")
+
+    save_price_history(
+        current_price,
+        checked_at
+    )
 
 
 if __name__ == "__main__":
