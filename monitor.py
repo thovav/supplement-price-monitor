@@ -22,6 +22,7 @@ TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
 
 def get_product_price():
+        raise RuntimeError("TEST: Price monitor failure notification")
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
