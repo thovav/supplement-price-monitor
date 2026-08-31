@@ -431,7 +431,7 @@ def main():
             "All products checked successfully."
         )
         
-   print("=== MONITOR.PY LOADED ===")
+print("=== MONITOR.PY LOADED ===")
 
 
 if __name__ == "__main__":
