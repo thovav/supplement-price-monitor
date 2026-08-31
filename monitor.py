@@ -42,6 +42,7 @@ PRODUCTS = {
 
 
 PRICE_FILE = Path("price_history.json")
+PRICE_DROP_FILE = Path("price_drop_detected.json")
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
@@ -223,7 +224,27 @@ def send_telegram(message):
 
     response.raise_for_status()
 
+def record_price_drop(
+    product_id,
+    product,
+    previous_price,
+    current_price
+):
+    reduction = previous_price - current_price
+    percentage = (reduction / previous_price) * 100
 
+    data = {
+        "product_id": product_id,
+        "product_name": product["name"],
+        "url": product["url"],
+        "previous_price": round(previous_price, 2),
+        "current_price": round(current_price, 2),
+        "reduction": round(reduction, 2),
+        "percentage": round(percentage, 1)
+    }
+
+    with open(PRICE_DROP_FILE, "w") as f:
+        json.dump(data, f, indent=2)
 def send_price_drop_notification(
     product,
     previous_price,
@@ -293,20 +314,27 @@ def main():
 
                 if current_price < previous_price:
 
-                    print(
-                        "PRICE DROP DETECTED!"
-                    )
+    print(
+        "PRICE DROP DETECTED!"
+    )
 
-                    send_price_drop_notification(
-                        product,
-                        previous_price,
-                        current_price
-                    )
+    record_price_drop(
+        product_id,
+        product,
+        previous_price,
+        current_price
+    )
 
-                    print(
-                        "Telegram price-drop "
-                        "notification sent."
-                    )
+    send_price_drop_notification(
+        product,
+        previous_price,
+        current_price
+    )
+
+    print(
+        "Telegram price-drop "
+        "notification sent."
+    )
 
                 elif current_price > previous_price:
 
