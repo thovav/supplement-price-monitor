@@ -8,12 +8,38 @@ import requests
 from bs4 import BeautifulSoup
 
 
-PRODUCT_URL = (
-    "https://www.cycheapersupplements.com/"
-    "muscle-mass/12988-core-champs-l-carnitine-1000-mg-90-tabs-90-servings.html"
-)
+PRODUCTS = {
+    "l_carnitine": {
+        "name": "Core Champs L-Carnitine 1000 mg - 90 Tabs",
+        "url": (
+            "https://www.cycheapersupplements.com/"
+            "muscle-mass/12988-core-champs-l-carnitine-1000-mg-90-tabs-90-servings.html"
+        ),
+        "title_pattern": r"Core Champs L-CARNITINE 1000 Mg 90 Tabs",
+    },
 
-PRODUCT_NAME = "Core Champs L-Carnitine 1000 mg - 90 Tabs"
+    "pure_iso_whey": {
+        "name": "Yava Labs Pure Iso Whey 2000 g - 66 Servings",
+        "url": (
+            "https://www.cycheapersupplements.com/"
+            "muscle-mass/13408-yava-labs-pure-iso-whey-2000-g-66-servings.html"
+        ),
+        "title_pattern": r"Yava Labs Pure Iso Whey 2000 g - 66 Servings",
+    },
+
+    "core_isolate_exp": {
+        "name": "Exp 08/02/2027 CORE CHAMPS 100% ISOLATE WHEY PROTEIN 2 Kgs - 67 Servings",
+        "url": (
+            "https://www.cycheapersupplements.com/"
+            "muscle-mass/13607-exp-08022027-core-champs-100-isolate-whey-protein-2-kgs-67-servings.html"
+        ),
+        "title_pattern": (
+            r"Exp 08/02/2027 CORE CHAMPS 100% ISOLATE "
+            r"WHEY PROTEIN 2 Kgs -67 Servings"
+        ),
+    },
+}
+
 
 PRICE_FILE = Path("price_history.json")
 
@@ -21,7 +47,7 @@ TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
 
-def get_product_price():
+def get_product_price(product):
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -31,7 +57,7 @@ def get_product_price():
     }
 
     response = requests.get(
-        PRODUCT_URL,
+        product["url"],
         headers=headers,
         timeout=30
     )
@@ -40,20 +66,23 @@ def get_product_price():
 
     soup = BeautifulSoup(response.text, "html.parser")
 
+    # Find the specific product title.
     title = soup.find(
         string=re.compile(
-            r"Core Champs L-CARNITINE 1000 Mg 90 Tabs",
+            product["title_pattern"],
             re.IGNORECASE
         )
     )
 
     if not title:
         raise RuntimeError(
-            "Could not find the product title on the page."
+            f"Could not find product title: {product['name']}"
         )
 
     product_section = title.parent
 
+    # Walk up the HTML tree until we reach the product
+    # information section containing the prices.
     for _ in range(8):
         if product_section.parent:
             product_section = product_section.parent
@@ -63,7 +92,7 @@ def get_product_price():
             strip=True
         )
 
-        if "21.99" in section_text or "25.99" in section_text:
+        if "€" in section_text:
             break
 
     text = product_section.get_text(
@@ -71,6 +100,7 @@ def get_product_price():
         strip=True
     )
 
+    # Find euro prices.
     matches = re.findall(
         r"€\s*(-?\d+(?:[.,]\d{2})?)",
         text
@@ -90,90 +120,89 @@ def get_product_price():
 
     if not prices:
         raise RuntimeError(
-            "Could not find a valid product price."
+            f"Could not find a valid price for: {product['name']}"
         )
 
     current_price = prices[0]
 
     print(
-        f"Detected product prices: "
+        f"{product['name']}"
+    )
+
+    print(
+        f"Detected prices: "
         f"{[f'€{p:.2f}' for p in prices]}"
     )
 
     print(
-        f"Current product price: "
+        f"Current price: "
         f"€{current_price:.2f}"
     )
 
     return current_price
 
 
-def load_previous_price():
+def load_price_history():
     if not PRICE_FILE.exists():
-        return None
+        return {}
 
     try:
         with open(PRICE_FILE, "r") as f:
             history = json.load(f)
 
-        # New history format: list of daily records
-        if isinstance(history, list):
-            if not history:
-                return None
-
-            return history[-1]["price"]
-
-        # Support the old single-record format
+        # New multi-product format.
         if isinstance(history, dict):
-            return history.get("price")
+            return history
 
-    except (json.JSONDecodeError, KeyError, TypeError):
+        # Convert the old single-product list format.
+        if isinstance(history, list):
+            return {
+                "l_carnitine": history
+            }
+
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+    return {}
+
+
+def get_previous_price(history, product_id):
+    product_history = history.get(product_id, [])
+
+    if not product_history:
         return None
 
-    return None
+    return product_history[-1]["price"]
 
 
-def save_price_history(price, checked_at):
-    history = []
+def save_price_history(history):
+    with open(PRICE_FILE, "w") as f:
+        json.dump(history, f, indent=2)
 
-    if PRICE_FILE.exists():
-        try:
-            with open(PRICE_FILE, "r") as f:
-                existing = json.load(f)
 
-            # Already using the new list format
-            if isinstance(existing, list):
-                history = existing
+def add_price_to_history(history, product_id, price, checked_at):
+    if product_id not in history:
+        history[product_id] = []
 
-            # Convert old single-record format
-            elif isinstance(existing, dict):
-                if "price" in existing and "checked_at" in existing:
-                    history.append(existing)
-
-        except (json.JSONDecodeError, TypeError):
-            history = []
+    product_history = history[product_id]
 
     today = checked_at[:10]
 
-    # If today's date already exists, update today's record
-    if history and history[-1].get("checked_at", "")[:10] == today:
-        history[-1] = {
+    # Don't create duplicate entries if the workflow is
+    # manually run more than once on the same day.
+    if (
+        product_history
+        and product_history[-1].get("checked_at", "")[:10] == today
+    ):
+        product_history[-1] = {
             "price": round(price, 2),
             "checked_at": checked_at
         }
     else:
-        history.append({
+        product_history.append({
             "price": round(price, 2),
             "checked_at": checked_at
         })
-
-    with open(PRICE_FILE, "w") as f:
-        json.dump(history, f, indent=2)
-
-    print(
-        f"Price history now contains "
-        f"{len(history)} daily records."
-    )
 
 
 def send_telegram(message):
@@ -195,50 +224,149 @@ def send_telegram(message):
     response.raise_for_status()
 
 
+def send_price_drop_notification(
+    product,
+    previous_price,
+    current_price
+):
+    reduction = previous_price - current_price
+    percentage = (reduction / previous_price) * 100
+
+    message = (
+        f"🔔 PRICE DROP!\n\n"
+        f"{product['name']}\n\n"
+        f"Previous price: €{previous_price:.2f}\n"
+        f"New price: €{current_price:.2f}\n"
+        f"Reduction: €{reduction:.2f} "
+        f"({percentage:.1f}%)\n\n"
+        f"👉 {product['url']}"
+    )
+
+    send_telegram(message)
+
+
+def send_monitor_failure_notification(errors):
+    message = (
+        "⚠️ PRICE MONITOR WARNING\n\n"
+        "One or more products could not be checked.\n\n"
+        + "\n".join(
+            f"• {error}"
+            for error in errors
+        )
+    )
+
+    send_telegram(message)
+
+
 def main():
-    current_price = get_product_price()
-    previous_price = load_previous_price()
+    history = load_price_history()
 
     checked_at = datetime.now(timezone.utc).isoformat()
 
-    print(f"Current price: €{current_price:.2f}")
+    errors = []
 
-    if previous_price is None:
-        print("No previous price found.")
-    else:
-        print(f"Previous price: €{previous_price:.2f}")
+    for product_id, product in PRODUCTS.items():
 
-        if current_price < previous_price:
-            reduction = previous_price - current_price
-            percentage = (reduction / previous_price) * 100
+        print("\n" + "=" * 60)
 
-            message = (
-                f"🔔 PRICE DROP!\n\n"
-                f"{PRODUCT_NAME}\n\n"
-                f"Previous price: €{previous_price:.2f}\n"
-                f"New price: €{current_price:.2f}\n"
-                f"Reduction: €{reduction:.2f} "
-                f"({percentage:.1f}%)\n\n"
-                f"👉 {PRODUCT_URL}"
+        try:
+            current_price = get_product_price(product)
+
+            previous_price = get_previous_price(
+                history,
+                product_id
             )
 
-            send_telegram(message)
+            if previous_price is None:
+
+                print(
+                    f"No previous price for "
+                    f"{product['name']}."
+                )
+
+            else:
+
+                print(
+                    f"Previous price: "
+                    f"€{previous_price:.2f}"
+                )
+
+                if current_price < previous_price:
+
+                    print(
+                        "PRICE DROP DETECTED!"
+                    )
+
+                    send_price_drop_notification(
+                        product,
+                        previous_price,
+                        current_price
+                    )
+
+                    print(
+                        "Telegram price-drop "
+                        "notification sent."
+                    )
+
+                elif current_price > previous_price:
+
+                    print(
+                        "Price increased. "
+                        "No notification."
+                    )
+
+                else:
+
+                    print(
+                        "Price unchanged."
+                    )
+
+            add_price_to_history(
+                history,
+                product_id,
+                current_price,
+                checked_at
+            )
+
+        except Exception as error:
+
+            error_message = (
+                f"{product['name']}: {error}"
+            )
 
             print(
-                "Price dropped. "
-                "Telegram notification sent."
+                f"ERROR: {error_message}"
             )
 
-        elif current_price > previous_price:
-            print("Price increased. No notification.")
+            errors.append(error_message)
 
-        else:
-            print("Price unchanged.")
+    # Save all successful product checks.
+    save_price_history(history)
 
-    save_price_history(
-        current_price,
-        checked_at
-    )
+    print("\n" + "=" * 60)
+    print("Price history saved.")
+
+    if errors:
+
+        print(
+            f"{len(errors)} product(s) failed."
+        )
+
+        # Send the failure warning directly from Python.
+        send_monitor_failure_notification(
+            errors
+        )
+
+        # Do NOT raise an exception here.
+        #
+        # This allows successful products to have their
+        # history saved even if another product fails.
+
+    else:
+
+        print(
+            "All products checked successfully."
+        )
 
 
 if __name__ == "__main__":
