@@ -34,13 +34,13 @@ jobs:
         run: |
           python monitor.py
 
-       - name: Generate price history chart
-         if: success()
+      - name: Generate price history chart
+        if: steps.check_price.outcome == 'success'
         run: |
           python create_chart.py
 
-       - name: Send price drop graph to Telegram
-        if: success() && hashFiles('price_drop_detected.json') != ''
+      - name: Send price drop graph to Telegram
+        if: steps.check_price.outcome == 'success' && hashFiles('price_drop_detected.json') != ''
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -50,19 +50,19 @@ jobs:
             -F chat_id="${TELEGRAM_CHAT_ID}" \
             -F photo="@price_history.png" \
             -F caption="📊 Updated supplement price history"
-            
+
       - name: Save price history
         if: steps.check_price.outcome == 'success'
         run: |
           git config user.name "Price Monitor Bot"
           git config user.email "actions@github.com"
 
-          git add price_history.json
+          git add price_history.json price_history.png
 
           if git diff --cached --quiet; then
             echo "No price change to commit."
           else
-            git commit -m "Update price history"
+            git commit -m "Update price history and chart"
           fi
 
           git pull --rebase origin main
@@ -76,7 +76,7 @@ jobs:
         run: |
           MESSAGE="⚠️ PRICE MONITOR FAILED
 
-          Core Champs L-Carnitine price could not be retrieved.
+          One or more products could not be checked.
 
           The scraper may need attention.
 
