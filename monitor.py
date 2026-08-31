@@ -394,4 +394,5 @@ def main():
         print(
             "All products checked successfully."
         )
+    if __name__ == "__main__":
     main()
