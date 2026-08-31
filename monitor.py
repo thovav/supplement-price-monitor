@@ -430,5 +430,10 @@ def main():
         print(
             "All products checked successfully."
         )
-    if __name__ == "__main__":
-        main()
+        
+   print("=== MONITOR.PY LOADED ===")
+
+
+if __name__ == "__main__":
+    print("=== MAIN FUNCTION STARTING ===")
+    main()
