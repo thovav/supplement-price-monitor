@@ -280,6 +280,11 @@ def send_monitor_failure_notification(errors):
 
 
 def main():
+    # Remove any previous price-drop trigger.
+    # This prevents yesterday's alert from being sent again.
+    if PRICE_DROP_FILE.exists():
+        PRICE_DROP_FILE.unlink()
+
     history = load_price_history()
 
     checked_at = datetime.now(timezone.utc).isoformat()
@@ -314,27 +319,27 @@ def main():
 
                 if current_price < previous_price:
 
-    print(
-        "PRICE DROP DETECTED!"
-    )
+                    print(
+                        "PRICE DROP DETECTED!"
+                    )
 
-    record_price_drop(
-        product_id,
-        product,
-        previous_price,
-        current_price
-    )
+                    record_price_drop(
+                        product_id,
+                        product,
+                        previous_price,
+                        current_price
+                    )
 
-    send_price_drop_notification(
-        product,
-        previous_price,
-        current_price
-    )
+                    send_price_drop_notification(
+                        product,
+                        previous_price,
+                        current_price
+                    )
 
-    print(
-        "Telegram price-drop "
-        "notification sent."
-    )
+                    print(
+                        "Telegram price-drop "
+                        "notification sent."
+                    )
 
                 elif current_price > previous_price:
 
@@ -380,22 +385,13 @@ def main():
             f"{len(errors)} product(s) failed."
         )
 
-        # Send the failure warning directly from Python.
         send_monitor_failure_notification(
             errors
         )
-
-        # Do NOT raise an exception here.
-        #
-        # This allows successful products to have their
-        # history saved even if another product fails.
 
     else:
 
         print(
             "All products checked successfully."
         )
-
-
-if __name__ == "__main__":
     main()
