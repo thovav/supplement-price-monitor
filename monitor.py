@@ -243,6 +243,42 @@ def record_price_drop(
         "percentage": round(percentage, 1)
     }
 
+    existing_drops = []
+
+    # If another product has already triggered a drop
+    # during this run, keep it.
+    if PRICE_DROP_FILE.exists():
+        try:
+            with open(PRICE_DROP_FILE, "r") as f:
+                existing_drops = json.load(f)
+
+            if not isinstance(existing_drops, list):
+                existing_drops = []
+
+        except (json.JSONDecodeError, TypeError):
+            existing_drops = []
+
+    existing_drops.append(data)
+
+    with open(PRICE_DROP_FILE, "w") as f:
+        json.dump(
+            existing_drops,
+            f,
+            indent=2
+        )
+    reduction = previous_price - current_price
+    percentage = (reduction / previous_price) * 100
+
+    data = {
+        "product_id": product_id,
+        "product_name": product["name"],
+        "url": product["url"],
+        "previous_price": round(previous_price, 2),
+        "current_price": round(current_price, 2),
+        "reduction": round(reduction, 2),
+        "percentage": round(percentage, 1)
+    }
+
     with open(PRICE_DROP_FILE, "w") as f:
         json.dump(data, f, indent=2)
 def send_price_drop_notification(
