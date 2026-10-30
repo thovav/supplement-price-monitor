@@ -366,10 +366,9 @@ def main():
                         current_price
                     )
 
-                    send_price_drop_notification(
-                        product,
-                        previous_price,
-                        current_price
+                     print(
+                          "Price drop recorded. "
+                          "Telegram notification disabled."
                     )
 
                     print(
