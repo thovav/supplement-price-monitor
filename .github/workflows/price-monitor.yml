@@ -56,18 +56,6 @@ jobs:
           git pull --rebase origin main
           git push origin main
 
-      - name: Notify price monitor failure
-        if: failure() && steps.check_price.outcome == 'failure'
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          MESSAGE="⚠️ PRICE MONITOR FAILED
-
-          One or more products could not be checked.
-
-          The scraper may need attention.
-
           GitHub workflow:
           https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
