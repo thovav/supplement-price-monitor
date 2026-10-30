@@ -420,8 +420,9 @@ def main():
             f"{len(errors)} product(s) failed."
         )
 
-        send_monitor_failure_notification(
-            errors
+        print("Some products could not be checked:")
+        for error in errors:
+            print(error)
         )
 
     else:
